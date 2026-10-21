@@ -1,0 +1,101 @@
+name: Publish and refresh Scholar metrics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scholar-source.zip'
+      - '.github/workflows/scholar-metrics.yml'
+  schedule:
+    - cron: '17 1 * * 1' # Monday 01:17 UTC = Monday 09:17 Asia/Shanghai.
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: Retrieve fresh Scholar metrics (false only republishes the current card)
+        type: boolean
+        required: true
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: scholar-metrics-main
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Require main as the default and triggering branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TRIGGER_REF: ${{ github.ref }}
+        run: |
+          test "$DEFAULT_BRANCH" = main || { echo 'Default branch must be main.'; exit 1; }
+          test "$TRIGGER_REF" = refs/heads/main || { echo 'Run this workflow from main only.'; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Unpack source and preserve the latest committed metrics
+        run: |
+          unzip -q scholar-source.zip -d source
+          for file in scholar-metrics.svg scholar-metrics.json; do
+            if test -f "$file"; then
+              cp -- "$file" "source/docs/$file"
+            fi
+          done
+
+      - name: Run offline tests
+        working-directory: source
+        run: node --test
+
+      - name: Retrieve and render once
+        id: refresh
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh)
+        working-directory: source
+        run: |
+          node update-scholar.mjs
+          node render-scholar-card.mjs
+
+      - name: Commit only successfully refreshed metrics
+        if: steps.refresh.outcome == 'success'
+        run: |
+          cp -- source/docs/scholar-metrics.json scholar-metrics.json
+          cp -- source/docs/scholar-metrics.svg scholar-metrics.svg
+          git add -- scholar-metrics.json scholar-metrics.svg
+          if git diff --cached --quiet -- scholar-metrics.json scholar-metrics.svg; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update verified Scholar metrics' -- scholar-metrics.json scholar-metrics.svg
+          git push origin HEAD:refs/heads/main
+
+      - name: Upload the current Pages content
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: source/docs
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

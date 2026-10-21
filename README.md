@@ -12,7 +12,17 @@
 node --test
 ```
 
-测试用数值均为合成数据，不会写入公开指标文件。生产更新脚本仅请求固定的公开 Scholar 主页一次，核验个人 ID、累计列和三项指标；不使用代理、不处理验证码、不反复重试，也不需要 npm 包或 API key。
+测试用数值均为合成数据，不会写入公开指标文件。不需要 npm 包。未设置密钥时，脚本仍只尝试读取固定的公开 Scholar 主页一次；Google 可能拒绝自动访问，目前直接读取已遇到 HTTP 403。脚本不使用代理、不处理验证码，也不反复重试。
+
+## 可选的 SerpApi 免费方案
+
+SerpApi 是第三方数据 API。官网当前免费额度为每月 250 次查询，官方说明无需信用卡；每周一次通常只需每月 4–5 次。账户注册与验证需要由用户本人完成，本包没有创建账户或附带任何密钥。
+
+取得自己的 API key 后，在仓库 **Settings → Secrets and variables → Actions → New repository secret** 添加名称 `SERPAPI_API_KEY`，值为该密钥。工作流仅把它传给刷新步骤，不写入公开源码、图片或指标 JSON，也不记录请求 URL、密钥或原始错误响应。不要把密钥填写到网页 HTML 或提交到仓库。
+
+存在此密钥时，脚本只调用 `https://serpapi.com/search.json`，参数固定为 `engine=google_scholar_author`、`author_id=vR-ZpaEAAAAJ`、`hl=en`。它验证返回的成功状态、作者 ID 和 `citations.all`、`h_index.all`、`i10_index.all`，然后沿用相同的 JSON 和 SVG 格式。接口失败会保留旧文件；没有密钥时不会伪称已接通 API。
+
+官方说明：https://serpapi.com/google-scholar-author-api 、https://serpapi.com/google-scholar-author-cited-by 、https://serpapi.com/pricing 。
 
 ## 发布与刷新
 

@@ -62,6 +62,8 @@ jobs:
         id: refresh
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh)
         working-directory: source
+        env:
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
         run: |
           node update-scholar.mjs
           node render-scholar-card.mjs
